@@ -96,7 +96,7 @@
   Note: In this example dependencies are already present in charts folder, so no need for this step.
   
   Upstream Helm Charts for contrail have hardcoded ingress templates for nginx controller. 
-  The packaged contrail charts (contrail-analytics-0.1.0.tgz and contrail-controller-0.1.0.tgz) used in this example are patched to allow setting ingress configurations through parent chart. [https://review.opencontrail.org/c/Juniper/contrail-helm-deployer/+/55685](upstream PR)
+  The packaged contrail charts (contrail-analytics-0.1.0.tgz and contrail-controller-0.1.0.tgz) used in this example are patched to allow setting ingress configurations through parent chart. [Upstream PR](https://review.opencontrail.org/c/Juniper/contrail-helm-deployer/+/55685)
 
 
 - Install helm chart
