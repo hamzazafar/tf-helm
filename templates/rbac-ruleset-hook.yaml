@@ -1,0 +1,53 @@
+{{- if .Values.rbac_ruleset_hook.enable }}
+{{- $context := . }}
+{{- $saName := .Values.hook_service_account_name }}
+{{- $releaseName := .Release.Name }}
+{{- $releaseService := .Release.Service }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: configmap-rbac-ruleset-hook
+data:
+  rbac_install.sh: |
+    {{- include "tungsten.rbac_install" . | indent 4 }}
+  ruleset: |
+    {{- include "tungsten.ruleset" . | indent 4 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "rbac-ruleset-job"
+  labels:
+    app.kubernetes.io/managed-by: {{ $releaseService }}
+    app.kubernetes.io/instance: {{ $releaseName}}
+    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    helm.sh/chart: "{{.Chart.Name}}-{{.Chart.Version}}"
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-4"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  template:
+    metadata:
+      name: "rbac-ruleset-job"
+      labels:
+        app.kubernetes.io/managed-by: {{ $releaseService }}
+        app.kubernetes.io/instance: {{ $releaseName }}
+        helm.sh/chart: "{{.Chart.Name}}-{{.Chart.Version}}"
+    spec:
+      serviceAccountName: {{ $saName }}
+      restartPolicy: Never
+      containers:
+      - name: rbac-install
+        image: {{ .Values.rbac_ruleset_hook.image }}
+        imagePullPolicy: {{ .Values.rbac_ruleset_hook.imagePullPolicy }}
+        volumeMounts:
+        - name: config-volume
+          mountPath: /var/lib/rbac
+        command: ["/bin/bash", "/var/lib/rbac/rbac_install.sh", "/var/lib/rbac/ruleset"]
+      volumes:
+        - name: config-volume
+          configMap:
+            name: configmap-rbac-ruleset-hook
+{{- end }}

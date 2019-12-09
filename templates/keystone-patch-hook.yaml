@@ -1,0 +1,51 @@
+{{- if .Values.keystone_patch_hook.enable }}
+{{- $context := . }}
+{{- $saName := .Values.hook_service_account_name }}
+{{- $releaseName := .Release.Name }}
+{{- $releaseService := .Release.Service }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: configmap-keystone-patch-hook
+data:
+  script.sh: |
+    {{- include "tungsten.keystone_patch" . | indent 4}}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "keystone-patch-job"
+  labels:
+    app.kubernetes.io/managed-by: {{ $releaseService }}
+    app.kubernetes.io/instance: {{ $releaseName}}
+    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    helm.sh/chart: "{{.Chart.Name}}-{{.Chart.Version}}"
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  template:
+    metadata:
+      name: "keystone-patch-job"
+      labels:
+        app.kubernetes.io/managed-by: {{ $releaseService }}
+        app.kubernetes.io/instance: {{ $releaseName }}
+        helm.sh/chart: "{{.Chart.Name}}-{{.Chart.Version}}"
+    spec:
+      serviceAccountName: {{ $saName }}
+      restartPolicy: Never
+      containers:
+      - name: keystone-patch
+        image: {{ .Values.keystone_patch_hook.image }}
+        imagePullPolicy: {{ .Values.keystone_patch_hook.imagePullPolicy }}
+        volumeMounts:
+        - name: config-volume
+          mountPath: /var/lib/patch
+        command: ["/bin/bash", "/var/lib/patch/script.sh"]
+      volumes:
+        - name: config-volume
+          configMap:
+            name: configmap-keystone-patch-hook
+{{- end }}

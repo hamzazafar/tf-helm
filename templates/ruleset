@@ -1,0 +1,31 @@
+{{- define "tungsten.ruleset" }}
+
+
+#* Member:CRUD
+routing-instance Member:R
+network-ipam Member:R
+network-policy Member:R
+virtual-network Member:R
+namespace Member:R
+project Member:R
+service-appliance-set Member:R
+
+floating-ip-pool Membet:R
+floating-ip Member:CRUD
+
+application-policy-set Member:CRUD
+security-group Member:CRUD
+access-control-list Member:CRUD
+service-template Member:CRUD
+instance-ip Member:CRUD
+loadbalancer-listener Member:CRUD
+virtual-machine-interface Member:CRUD
+loadbalancer Member:CRUD
+service-instance Member:CRUD
+loadbalancer-pool Member:CRUD
+loadbalancer-healthmonitor Member:CRUD
+virtual-machine Member:CRUD
+loadbalancer-member Member:CRUD
+ref-update Member:CRUD
+
+{{- end -}}

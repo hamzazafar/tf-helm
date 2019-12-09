@@ -61,7 +61,7 @@
   kubectl label no <minion-id-2> opencontrail.org/redis=enabled
   ```
 
-- Atleast Rabbit labels
+- Add Rabbit labels
   ```
   kubectl label no <minion-id-0> opencontrail.org/rabbit=enabled
   kubectl label no <minion-id-1> opencontrail.org/rabbit=enabled
@@ -112,7 +112,7 @@ contrail-config-api
 
 contrail-analytics-api
 
-`http://<ANALYTICS-API>.cern.ch:8081`
+`http://<ANALYTICS-API>.cern.ch:8083`
 
 
 ## Additional information
@@ -141,7 +141,7 @@ virtual-network.subnet admin:CRUD,member:R
 4. Important: container executing rbac install script should contain kubectl binary
 
 ```
-helm secrets upgrade <release-name> -f tungsten/values.yaml -f tungsten/secrets.yaml <chart-path>
+helm upgrade <release-name> -f tungsten/values.yaml -f tungsten/secrets.yaml <chart-path>
 ```
 
 4. Two ways of reading the latest RBAC rules.

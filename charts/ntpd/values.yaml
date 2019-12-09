@@ -1,0 +1,6 @@
+image:
+  repository: seznam/ntpd
+  tag: latest
+  pullPolicy: IfNotPresent
+
+servers:

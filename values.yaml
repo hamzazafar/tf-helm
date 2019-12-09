@@ -1,0 +1,591 @@
+hook_service_account_name: "hook-svc-account"
+
+# Post installation step for configuring RBAC policies
+# rbac_ruleset job container should have kubectl binary
+# rbac policies can also be configured using UI:
+# https://www.juniper.net/documentation/en_US/contrail5.0/topics/concept/role-resource-access-control-vmc.html
+rbac_ruleset_hook:
+  enable: false
+  image: "gitlab-registry.cern.ch/cloud/ciadm"
+  imagePullPolicy: "IfNotPresent"
+
+# CERN specific patch, preserve dashes in openstack tenant/project IDs
+keystone_patch_hook:
+  enable: false
+  image: "gitlab-registry.cern.ch/cloud/ciadm"
+  imagePullPolicy: "IfNotPresent"
+
+# set ntpd servers
+ntpd:
+  servers:
+    - <ntp-server-1-IP>
+    - <ntp-server-2-IP>
+    - <ntp-server-3-IP>
+
+contrail-analytics:
+  global:
+    images:
+      tags:
+        nodemgr: "docker.io/tungstenfabric/contrail-nodemgr:2019-11-18-stable"
+        contrail_status: "docker.io/tungstenfabric/contrail-status:2019-11-18-stable"
+        node_init: "docker.io/tungstenfabric/contrail-node-init:2019-11-18-stable"
+        analytics_api: "docker.io/tungstenfabric/contrail-analytics-api:2019-11-18-stable"
+        contrail_collector: "docker.io/tungstenfabric/contrail-analytics-collector:2019-11-18-stable"
+        analytics_alarm_gen: "docker.io/tungstenfabric/contrail-analytics-alarm-gen:2019-11-18-stable"
+        analytics_snmp_collector: "docker.io/tungstenfabric/contrail-analytics-snmp-collector:2019-11-18-stable"
+        contrail_topology: "docker.io/tungstenfabric/contrail-analytics-snmp-topology:2019-11-18-stable"
+        dep_check: quay.io/stackanetes/kubernetes-entrypoint:v0.2.1
+      imagePullPolicy: "IfNotPresent"
+      #imagePullPolicy: "Always"
+      # Specify imageCredentials
+      imageCredentials:
+        # registry: quay.io
+        # username: username
+        # password: password
+
+    contrail_env:
+      CONTROLLER_NODES: <controller-node-ip>
+      CONFIG_NODES: <controller-node-ip>
+      CONTROL_NODES: <control-node-ip>
+      ANALYTICS_NODES: <analytics-node-ip>
+      ANALYTICS_API_PORT: 8083
+      LOG_LEVEL: SYS_DEBUG
+      CLOUD_ORCHESTRATOR: openstack
+      AAA_MODE: no-auth
+      #AAA_MODE: rbac
+      ANALYTICSDB_ENABLE: "true"
+      ANALYTICS_ALARM_ENABLE: "true"
+      ANALYTICS_SNMP_ENABLE: "true"
+
+      REDIS_NODES: <analytics-node-ip>,<controller-node-ip>
+
+  labels:
+    analytics:
+      node_selector_key: opencontrail.org/analytics
+      node_selector_value: "enabled"
+    analytics_snmp:
+      node_selector_key: opencontrail.org/analytics
+      node_selector_value: "enabled"
+    analytics_alarm:
+      node_selector_key: opencontrail.org/analytics
+      node_selector_value: "enabled"
+
+  dependencies:
+    analytics:
+      daemonset:
+      - contrail-config
+    analytics_snmp:
+      daemonset:
+      - contrail-config
+    analytics_alarm:
+      daemonset:
+      - contrail-config
+
+  # Names of secrets used by bootstrap and environmental checks
+  secrets:
+    keystone:
+      admin: contrail-analytics-keystone-admin
+
+  # typically overriden by environmental
+  # values, but should include all endpoints
+  # required by this chart
+  endpoints:
+    cluster_domain_suffix: cluster.local
+    rabbitmq:
+      auth:
+        username: guest
+      path: /
+      scheme: rabbit
+      port:
+        amqp:
+          default: 5673
+      hosts:
+        default: rabbitmq
+      host_fqdn_override:
+        default: null
+      domain_override: null
+    keystone:
+      auth:
+        username: <KEYSTONE-ADMIN-USERNAME>
+        project_name: <OPENSTACK-PROJECT-NAME>
+        user_domain_name: default
+        project_domain_name: default
+        region_name: <OPENSTACK-REGION-NAME
+      hosts:
+        default: keystone
+      path:
+        default: /v3
+      port:
+        api:
+          default: 443
+      scheme:
+        default: https
+      host_fqdn_override:
+         default: null
+      namespace: cern.ch
+
+  pod:
+    lifecycle:
+      upgrades:
+        daemonsets:
+          pod_replacement_strategy: RollingUpdate
+          analytics:
+            enabled: true
+            min_ready_seconds: 0
+            max_unavailable: 1
+
+  # Service related inputs are defined here
+  service:
+    analytics_api_public_port: "8083"
+
+  # Ingress related inputs are defined here
+  ingress:
+    analytics_api:
+      annotations:
+        kubernetes.io/ingress.class: traefik
+        traefik.frontend.entryPoints: "http"
+      hosts:
+        - name: <analytics-api-domain-name>
+          path: /
+
+  # VolumeMounts related inputs are defined here
+  volumeMounts:
+    host_usr_bin:
+      hostPath: '/usr/local/bin'
+
+  manifests:
+    configmap_analytics_env: true
+    configmap_analytics_keystone: true
+    configmap_analytics_rabbitmq: true
+    daemonset_analytics: true
+    daemonset_analytics_snmp: true
+    daemonset_analytics_alarm: true
+    service_analytics_api_server: true
+    service_analytics_api_ingress: true
+    ingress_analytics_api: true
+    secret_analytics_keystone_admin: true
+
+ 
+contrail-controller:
+  global:
+    images:
+      tags:
+        nodemgr: "docker.io/tungstenfabric/contrail-nodemgr:2019-11-18-stable"
+        contrail_status: "docker.io/tungstenfabric/contrail-status:2019-11-18-stable"
+        node_init: "docker.io/tungstenfabric/contrail-node-init:2019-11-18-stable"
+        contrail_control: "docker.io/tungstenfabric/contrail-controller-control-control:2019-11-18-stable"
+        control_dns: "docker.io/tungstenfabric/contrail-controller-control-dns:2019-11-18-stable"
+        control_named: "docker.io/tungstenfabric/contrail-controller-control-named:2019-11-18-stable"
+        config_api: "docker.io/tungstenfabric/contrail-controller-config-api:2019-11-18-stable"
+        config_devicemgr: "docker.io/tungstenfabric/contrail-controller-config-devicemgr:2019-11-18-stable"
+        config_schema_transformer: "docker.io/tungstenfabric/contrail-controller-config-schema:2019-11-18-stable"
+        config_svcmonitor: "docker.io/tungstenfabric/contrail-controller-config-svcmonitor:2019-11-18-stable"
+        webui_middleware: "docker.io/tungstenfabric/contrail-controller-webui-job:2019-11-18-stable"
+        webui: "docker.io/tungstenfabric/contrail-controller-webui-web:2019-11-18-stable"
+        kube_manager: "docker.io/tungstenfabric/contrail-kubernetes-kube-manager:2019-11-18-stable"
+        dep_check: quay.io/stackanetes/kubernetes-entrypoint:v0.2.1
+      imagePullPolicy: "IfNotPresent"
+      #imagePullPolicy: "Always"
+      # Specify imageCredentials
+      imageCredentials:
+        # registry: quay.io
+        # username: username
+        # password: password
+
+    contrail_env:
+      CONTROLLER_NODES: <controller-node-ip>
+      CONFIG_NODES: <controller-node-ip>
+      CONTROL_NODES: <control-node-ip>
+      ANALYTICS_NODES: <analytics-node-ip>
+      ANALYTICS_API_PORT: 8083
+      LOG_LEVEL: SYS_DEBUG
+      CLOUD_ORCHESTRATOR: openstack
+      CLOUD_ADMIN_ROLE: service
+      AAA_MODE: rbac
+      #AAA_MODE: no-auth
+      ANALYTICSDB_ENABLE: "true"
+      ANALYTICS_ALARM_ENABLE: "true"
+      ANALYTICS_SNMP_ENABLE: "true"
+
+      WEBUI_HTTP_LISTEN_PORT: 6050
+      
+
+      REDIS_NODES: <analytics-node-ip>,<controller-node-ip>
+      # Neutron params
+      networkManager_ip: <neutron-server-ip>
+      networkManager_port: 443
+      networkManager_authProtocol: https
+
+      # push_mode=0 for ansible plugin, push_mode=1 for python plugin(deprecated)
+      #DEVICE_MANAGER__DEFAULTS__push_mode: "0"
+
+      SVC_MONITOR__DEFAULTS__check_service_interval: "15"
+      API__KEYSTONE__keystone_sync_on_demand: "true"
+
+
+      # Ticket: https://its.cern.ch/jira/browse/OS-9713
+      #API__QUOTA__defaults: "-1"
+
+      #API__DEFAULTS__log_level: "SYS_DEBUG"
+      #API__QUOTA__virtual_network: "2"
+
+      #API__QUOTA__firewall_group: "1"
+      #API__QUOTA__firewall_rule: "5"
+      #API__QUOTA__firewall_policy: "5"
+
+      #API__QUOTA__floating_ip: "0"
+      #API__QUOTA__virtual_network: "0"
+      #API__QUOTA__virtual_router: "0"
+      #API__QUOTA__bgp_router: "0"
+      #API__QUOTA__network_ipam: "0"
+      #API__QUOTA__access_control_list: "1"
+      #API__QUOTA__network_policy: "0"
+      #API__QUOTA__floating_ip_pool: "0"
+      #API__QUOTA__service_template: "4"
+
+      #API__QUOTA__service_instance: "10"
+      #API__QUOTA__loadbalancer: "10"
+      #API__QUOTA__loadbalancer_listener: "-1"
+
+      #API__QUOTA__virtual_machine_interface: "0"
+      #API__QUOTA__loadbalancer_pool: "0"
+      #API__QUOTA__loadbalancer_member: "0"
+      #API__QUOTA__loadbalancer_healthmonitor: "0"
+      #API__QUOTA__virtual_ip: "0"
+      #API__QUOTA__instance_ip: "0"
+
+      #API__QUOTA__logical_router: "0"
+      #API__QUOTA__security_group: "1"
+      #API__QUOTA__security_group_rule: "5"
+      #API__QUOTA__subnet: "0"
+      #API__QUOTA__global_vrouter_config: "0"
+
+  labels:
+    control:
+      node_selector_key: opencontrail.org/control
+      node_selector_value: "enabled"
+    control_only:
+      node_selector_key: opencontrail.org/control
+      node_selector_value: "enabled"
+    config:
+      node_selector_key: opencontrail.org/config
+      node_selector_value: "enabled"
+    webui:
+      node_selector_key: opencontrail.org/config
+      node_selector_value: "enabled"
+    kube_manager:
+      node_selector_key: opencontrail.org/config
+      node_selector_value: "enabled"
+
+  dependencies:
+    config:
+      daemonset:
+      - contrail-configdb
+    control:
+      daemonset:
+      - contrail-config
+    webui:
+      daemonset:
+      - contrail-config
+      - contrail-redis
+    kube-manager:
+      daemonset:
+      - contrail-config
+
+  # Names of secrets used by bootstrap and environmental checks
+  secrets:
+    keystone:
+      admin: contrail-controller-keystone-admin
+
+  # typically overriden by environmental
+  # values, but should include all endpoints
+  # required by this chart
+  endpoints:
+    cluster_domain_suffix: cluster.local
+    rabbitmq:
+      auth:
+        username: guest
+      path: /
+      scheme: rabbit
+      port:
+        amqp:
+          default: 5673
+      hosts:
+        default: rabbitmq
+      host_fqdn_override:
+         default: null
+      domain_override: null
+
+    keystone:
+      auth:
+        username: <KEYSTONE-ADMIN-USERNAME>
+        project_name: <OPENSTACK-PROJECT-NAME>
+        user_domain_name: default
+        project_domain_name: default
+        region_name: <OPENSTACK-REGION-NAME
+      hosts:
+        default: keystone
+      path:
+        default: /v3
+      port:
+        api:
+          default: 443
+      scheme:
+        default: https
+      host_fqdn_override:
+         default: null
+      namespace: cern.ch
+
+  pod:
+    lifecycle:
+      upgrades:
+        daemonsets:
+          pod_replacement_strategy: RollingUpdate
+          control:
+            enabled: true
+            min_ready_seconds: 0
+            max_unavailable: 1
+          control_only:
+            enabled: true
+            min_ready_seconds: 0
+            max_unavailable: 1
+          config:
+            enabled: true
+            min_ready_seconds: 0
+            max_unavailable: 1
+          webui:
+            enabled: true
+            min_ready_seconds: 0
+            max_unavailable: 1
+
+  # Service related inputs are defined here
+  #service:
+  #  config_api_public_port: ""
+
+  # Ingress related inputs are defined here
+  ingress:
+    config_api:
+      annotations:
+        kubernetes.io/ingress.class: traefik
+        traefik.frontend.entryPoints: "http"
+      hosts:
+        - name: <config-api-domain-name>
+          path: /
+    webui:
+      annotations:
+        kubernetes.io/ingress.class: traefik
+        traefik.frontend.entryPoints: "http"
+      hosts:
+        - name: <webui-domain-name>
+          path: /
+
+  # VolumeMounts related inputs are defined here
+  volumeMounts:
+    host_usr_bin:
+      hostPath: '/usr/local/bin'
+
+  manifests:
+    configmap_controller_env: true
+    configmap_controller_keystone: true
+    configmap_controller_rabbitmq: true
+    daemonset_config: true
+    daemonset_control: true
+    daemonset_control_only: false
+    daemonset_webui: true
+    daemonset_kube_manager: false
+    service_config_api_server: true
+    service_config_ingress: true
+    service_web_controller: true
+    service_webui_ingress: true
+    ingress_webui: true
+    ingress_config_api: true
+    
+    secret_controller_keystone_admin: true
+
+contrail-thirdparty:
+  global:
+    images:
+      tags:
+        kafka: "docker.io/tungstenfabric/contrail-external-kafka:2019-11-18-stable"
+        cassandra: "docker.io/tungstenfabric/contrail-external-cassandra:2019-11-18-stable"
+        redis: "docker.io/tungstenfabric/contrail-external-redis:2019-11-18-stable"
+        zookeeper: "docker.io/tungstenfabric/contrail-external-zookeeper:2019-11-18-stable"
+        rabbitmq: "docker.io/tungstenfabric/contrail-external-rabbitmq:2019-11-18-stable"
+        nodemgr: "docker.io/tungstenfabric/contrail-nodemgr:2019-11-18-stable"
+        analytics_query_engine: "docker.io/tungstenfabric/contrail-analytics-query-engine:2019-11-18-stable"
+        contrail_status: "docker.io/tungstenfabric/contrail-status:2019-11-18-stable"
+        node_init: "docker.io/tungstenfabric/contrail-node-init:2019-11-18-stable"
+        dep_check: quay.io/stackanetes/kubernetes-entrypoint:v0.2.1
+      imagePullPolicy: "IfNotPresent"
+      #imagePullPolicy: "Always"
+      # Specify imageCredentials
+      imageCredentials:
+        # registry: quay.io
+        # username: username
+        # password: password
+
+    contrail_env:
+      CONTROLLER_NODES: <controller-node-ip>
+      CONFIG_NODES: <controller-node-ip>
+      CONTROL_NODES: <control-node-ip>
+      ANALYTICS_NODES: <analytics-node-ip>
+      ANALYTICS_API_PORT: 8083
+      LOG_LEVEL: SYS_DEBUG
+      CLOUD_ORCHESTRATOR: openstack
+      AAA_MODE: no-auth
+      RABBITMQ_VHOST: "/"
+      RABBITMQ_USER: "guest"
+      RABBITMQ_NODE_PORT: 5673
+      RABBITMQ_NODES: <controller-node-ip>,<control-node-ip>,<analytics-node-ip>
+
+      ANALYTICSDB_ENABLE: "true"
+      ANALYTICS_ALARM_ENABLE: "true"
+      ANALYTICS_SNMP_ENABLE: "true"
+
+      # Zookeeper and Cassandra nodes for analytics
+      ANALYTICSDB_NODES: <analytics-node-ip>
+
+      # Zookeeper and Cassandra nodes for config
+      CONFIGDB_NODES: <controller-node-ip>
+
+      REDIS_NODES: <analytics-node-ip>,<controller-node-ip>
+      # See https://its.cern.ch/jira/browse/OS-6515
+      DATABASE_NODEMGR__DEFAULTS__minimum_diskGB: "10"
+      CONFIG_DATABASE_NODEMGR__DEFAULTS__minimum_diskGB: "10"
+
+  labels:
+    configdb:
+      node_selector_key: opencontrail.org/config
+      node_selector_value: "enabled"
+    analyticsdb:
+      node_selector_key: opencontrail.org/analytics
+      node_selector_value: "enabled"
+    config_zookeeper:
+      node_selector_key: opencontrail.org/config
+      node_selector_value: "enabled"
+    redis:
+      node_selector_key: opencontrail.org/redis
+      node_selector_value: "enabled"
+    kafka:
+      node_selector_key: opencontrail.org/analytics
+      node_selector_value: "enabled"
+    analyticsdb_nodemgr:
+      node_selector_key: opencontrail.org/analytics
+      node_selector_value: "enabled"
+    configdb_nodemgr:
+      node_selector_key: opencontrail.org/config
+      node_selector_value: "enabled"
+    rabbitmq:
+      node_selector_key: opencontrail.org/rabbit
+      node_selector_value: "enabled"
+
+  dependencies:
+    kafka:
+      daemonset:
+      - contrail-config-zookeeper
+    analyticsdb:
+      daemonset:
+      - contrail-kafka
+    configdb:
+      daemonset:
+      - contrail-config-zookeeper
+    analyticsdb_nodemgr:
+      daemonset:
+      - contrail-analyticsdb
+    configdb_nodemgr:
+      daemonset:
+      - contrail-configdb
+    rabbitmq:
+      daemonset:
+      - contrail-config-zookeeper
+      - contrail-configdb
+
+  # Names of secrets used by bootstrap and environmental checks
+  secrets:
+    keystone:
+      admin: contrail-thirdparty-keystone-admin
+
+  endpoints:
+    cluster_domain_suffix: cluster.local
+    keystone:
+      auth:
+        username: <KEYSTONE-ADMIN-USERNAME>
+        project_name: <OPENSTACK-PROJECT-NAME>
+        user_domain_name: default
+        project_domain_name: default
+        region_name: <OPENSTACK-REGION-NAME
+      hosts:
+        default: keystone
+      path:
+        default: /v3
+      port:
+        api:
+          default: 443
+      scheme:
+        default: https
+      host_fqdn_override:
+         default: null
+      namespace: cern.ch
+
+  pod:
+    lifecycle:
+      upgrades:
+        daemonsets:
+          pod_replacement_strategy: RollingUpdate
+          configdb:
+            enabled: true
+            min_ready_seconds: 0
+            max_unavailable: 1
+          analyticsdb:
+            enabled: true
+            min_ready_seconds: 0
+            max_unavailable: 1
+          config_zookeeper:
+            enabled: true
+            min_ready_seconds: 0
+            max_unavailable: 1
+          redis:
+            enabled: true
+            min_ready_seconds: 0
+            max_unavailable: 1
+          kafka:
+            enabled: true
+            min_ready_seconds: 0
+            max_unavailable: 1
+          rabbitmq:
+            enabled: true
+            min_ready_seconds: 0
+            max_unavailable: 1
+          analyticsdb_nodemgr:
+            enabled: true
+            min_ready_seconds: 0
+            max_unavailable: 1
+          configdb_nodemgr:
+            enabled: true
+            min_ready_seconds: 0
+            max_unavailable: 1
+
+  # VolumeMounts related inputs are defined here
+  volumeMounts:
+    host_usr_bin:
+      hostPath: '/usr/local/bin'
+
+  #service:
+  #  rabbitmq_public_port: ""
+
+  manifests:
+    configmap_config_zookeeper: true
+    configmap_thirdparty_env: true
+    configmap_thirdparty_keystone: true
+    configmap_configdb: true
+    configmap_analyticsdb: true
+    daemonset_configdb: true
+    daemonset_analyticsdb: true
+    daemonset_redis: true
+    daemonset_config_zookeeper: true
+    daemonset_kafka: true
+    daemonset_analyticsdb_nodemgr: true
+    daemonset_configdb_nodemgr: true
+    secret_thirdparty_keystone_admin: true
+    daemonset_rabbitmq: true
+    service_rabbitmq: true
